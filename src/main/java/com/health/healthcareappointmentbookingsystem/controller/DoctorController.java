@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-
 @RestController
 @RequestMapping("/api/doctors")
 @RequiredArgsConstructor
@@ -15,17 +14,14 @@ public class DoctorController {
 
     private final DoctorService doctorService;
 
-    // GET /api/doctors                         -> همه‌ی دکترها
-    // GET /api/doctors?specialization=CARDIOLOGY -> فیلترشده بر اساس تخصص
+    // GET /api/doctors
+    // GET /api/doctors?specialization=CARDIOLOGY
     @GetMapping
     public List<DoctorResponse> getAllDoctors(@RequestParam(required = false) Specialization specialization) {
-        if (specialization != null) {
-            return doctorService.getDoctorsBySpecialization(specialization);
-        }
-        return doctorService.getAllDoctors();
+        return doctorService.getDoctors(specialization);
     }
 
-    // GET /api/doctors/5 -> یه دکتر خاص
+    // GET /api/doctors/5
     @GetMapping("/{id}")
     public DoctorResponse getDoctorById(@PathVariable Long id) {
         return doctorService.getDoctorById(id);
