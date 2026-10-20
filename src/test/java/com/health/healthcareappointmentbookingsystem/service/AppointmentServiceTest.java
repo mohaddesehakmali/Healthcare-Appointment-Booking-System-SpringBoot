@@ -2,106 +2,128 @@ package com.health.healthcareappointmentbookingsystem.service;
 
 import com.health.healthcareappointmentbookingsystem.dto.dtoRequest.AppointmentRequest;
 import com.health.healthcareappointmentbookingsystem.entity.*;
-import com.health.healthcareappointmentbookingsystem.repository.AppointmentRepository;
-import com.health.healthcareappointmentbookingsystem.repository.DoctorRepository;
-import com.health.healthcareappointmentbookingsystem.repository.PatientRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import com.health.healthcareappointmentbookingsystem.repository.*;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import java.time.*;
+import java.util.*;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AppointmentServiceTest {
+    @Mock AppointmentRepository appointmentRepository;
+    @Mock PatientRepository patientRepository;
+    @Mock DoctorRepository doctorRepository;
+    @Mock DoctorAvailabilityRepository availabilityRepository;
+    @InjectMocks AppointmentService service;
 
-    @Mock private AppointmentRepository appointmentRepository;
-    @Mock private PatientRepository patientRepository;
-    @Mock private DoctorRepository doctorRepository;
+    User patientUser;
+    Patient patient;
+    Doctor doctor;
+    AppointmentRequest request;
 
-    @InjectMocks
-    private AppointmentService appointmentService;
-
-    private User currentUser;
-    private Patient youngPatient;
-    private Patient adultPatient;
-    private Doctor doctor;
-    private AppointmentRequest request;
-
-    @BeforeEach
-    void setUp() {
-        currentUser = User.builder().id(1L).email("patient@example.com").role(Role.PATIENT).build();
-
-        // Fake a logged-in user (this is what JwtAuthenticationFilter would normally set)
+    @BeforeEach void setup() {
+        patientUser = User.builder().id(1L).email("p@test.com").role(Role.PATIENT).build();
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(currentUser, null, currentUser.getAuthorities())
-        );
-
-        youngPatient = new Patient();
-        youngPatient.setId(10L);
-        youngPatient.setFullName("Kid Patient");
-        youngPatient.setDateOfBirth(LocalDate.now().minusYears(10)); // 10 years old
-
-        adultPatient = new Patient();
-        adultPatient.setId(11L);
-        adultPatient.setFullName("Adult Patient");
-        adultPatient.setDateOfBirth(LocalDate.now().minusYears(30)); // 30 years old
-
+                new UsernamePasswordAuthenticationToken(patientUser, null, patientUser.getAuthorities()));
+        patient = new Patient();
+        patient.setId(10L);
+        patient.setUser(patientUser);
+        patient.setFullName("Jane");
+        patient.setDateOfBirth(LocalDate.now().minusYears(25));
+        User doctorUser = User.builder().id(2L).email("d@test.com").role(Role.DOCTOR).build();
         doctor = new Doctor();
         doctor.setId(20L);
-        doctor.setFullName("Dr. Smith");
+        doctor.setUser(doctorUser);
+        doctor.setFullName("Doctor");
         doctor.setSpecialization(Specialization.CARDIOLOGY);
-
         request = new AppointmentRequest();
         request.setDoctorId(20L);
-        request.setAppointmentDateTime(LocalDateTime.now().plusDays(1));
+        request.setAppointmentDateTime(LocalDate.now().plusDays(1).atTime(10, 0));
         request.setReasonForVisit("Checkup");
     }
 
-    @Test
-    void bookAppointment_throwsException_whenPatientUnder13() {
-        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(youngPatient));
+    @AfterEach void cleanup() { SecurityContextHolder.clearContext(); }
 
-        assertThatThrownBy(() -> appointmentService.bookAppointment(request))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("under 13");
+    @Test void underagePatientCannotBook() {
+        patient.setDateOfBirth(LocalDate.now().minusYears(10));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(patient));
+        assertThatThrownBy(() -> service.bookAppointment(request))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("under 13");
     }
 
-    @Test
-    void bookAppointment_succeeds_whenPatientIsAdult() {
-        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(adultPatient));
-        when(doctorRepository.findById(20L)).thenReturn(Optional.of(doctor));
-        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(invocation -> {
-            Appointment a = invocation.getArgument(0);
-            a.setId(100L);
-            return a;
-        });
-
-        var response = appointmentService.bookAppointment(request);
-
-        assertThat(response.getPatientName()).isEqualTo("Adult Patient");
-        assertThat(response.getDoctorName()).isEqualTo("Dr. Smith");
-        assertThat(response.getStatus()).isEqualTo(AppointmentStatus.PENDING);
+    @Test void unavailableSlotCannotBeBooked() {
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(patient));
+        when(doctorRepository.findByIdForUpdate(20L)).thenReturn(Optional.of(doctor));
+        when(availabilityRepository.findByDoctorIdAndDayOfWeek(eq(20L), any())).thenReturn(List.of());
+        assertThatThrownBy(() -> service.bookAppointment(request))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("not available");
     }
 
-    @Test
-    void bookAppointment_throwsException_whenDoctorNotFound() {
-        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(adultPatient));
-        when(doctorRepository.findById(20L)).thenReturn(Optional.empty());
+    @Test void bookedSlotCannotBeBookedTwice() {
+        availableDoctor();
+        when(appointmentRepository.existsByDoctorIdAndAppointmentDateTimeAndStatusIn(eq(20L),any(),anyList()))
+                .thenReturn(true);
+        assertThatThrownBy(() -> service.bookAppointment(request))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("already booked");
+    }
 
-        assertThatThrownBy(() -> appointmentService.bookAppointment(request))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Doctor not found");
+    @Test void validBookingCreatesPendingAppointment() {
+        availableDoctor();
+        when(appointmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        var result = service.bookAppointment(request);
+        assertThat(result.getStatus()).isEqualTo(AppointmentStatus.PENDING);
+        assertThat(result.getPatientName()).isEqualTo("Jane");
+    }
+
+    @Test void unrelatedDoctorCannotConfirm() {
+        User stranger = User.builder().id(3L).email("other@test.com").role(Role.DOCTOR).build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(stranger,null,stranger.getAuthorities()));
+        Appointment a = pendingAppointment();
+        when(appointmentRepository.findById(99L)).thenReturn(Optional.of(a));
+        assertThatThrownBy(() -> service.confirmAppointment(99L)).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test void patientCannotCancelSomeoneElsesAppointment() {
+        Appointment a = pendingAppointment();
+        User other = User.builder().id(55L).email("other@test.com").role(Role.PATIENT).build();
+        a.getPatient().setUser(other);
+        when(appointmentRepository.findById(99L)).thenReturn(Optional.of(a));
+        assertThatThrownBy(() -> service.cancelAppointment(99L)).isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test void ownerCanCancelPendingAppointment() {
+        Appointment a = pendingAppointment();
+        when(appointmentRepository.findById(99L)).thenReturn(Optional.of(a));
+        when(appointmentRepository.save(a)).thenReturn(a);
+        assertThat(service.cancelAppointment(99L).getStatus()).isEqualTo(AppointmentStatus.CANCELLED);
+    }
+
+    private Appointment pendingAppointment() {
+        Appointment a = new Appointment();
+        a.setId(99L); a.setPatient(patient); a.setDoctor(doctor);
+        a.setAppointmentDateTime(request.getAppointmentDateTime());
+        a.setStatus(AppointmentStatus.PENDING);
+        return a;
+    }
+
+    private void availableDoctor() {
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(patient));
+        when(doctorRepository.findByIdForUpdate(20L)).thenReturn(Optional.of(doctor));
+        DoctorAvailability slot = new DoctorAvailability();
+        slot.setStartTime(LocalTime.of(9,0));
+        slot.setEndTime(LocalTime.of(17,0));
+        when(availabilityRepository.findByDoctorIdAndDayOfWeek(eq(20L),any()))
+                .thenReturn(List.of(slot));
     }
 }
