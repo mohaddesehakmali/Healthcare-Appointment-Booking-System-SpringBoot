@@ -7,30 +7,32 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
-
 import java.time.LocalDate;
 
 @Data
 public class RegisterRequest {
-    @NotBlank(message = "Full name is required")
+    @NotBlank
     private String fullName;
 
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email must be valid")
+    @NotBlank
+    @Email
     private String email;
 
-    @NotBlank(message = "Password is required")
-    @Size(min = 6, message = "Password must be at least 6 characters")
+    @NotBlank
+    @Size(min = 8, message = "Password must contain at least 8 characters")
     private String password;
 
-    @NotNull(message = "Role is required")
+    @NotNull
     private Role role;
 
     private String phoneNumber;
 
- // for patient
+    // Required only for patient registration
     private LocalDate dateOfBirth;
-// for doctor
+    private String gender;
+    private String nationalId;
+
+    // Required only for doctor registration
     private Specialization specialization;
     private String licenseNumber;
     private Integer yearsOfExperience;

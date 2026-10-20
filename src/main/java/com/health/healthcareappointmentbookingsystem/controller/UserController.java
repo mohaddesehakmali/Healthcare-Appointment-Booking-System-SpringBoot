@@ -2,19 +2,15 @@ package com.health.healthcareappointmentbookingsystem.controller;
 
 import com.health.healthcareappointmentbookingsystem.dto.dtoResponse.DoctorResponse;
 import com.health.healthcareappointmentbookingsystem.service.DoctorService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/users")
+@RequiredArgsConstructor
 public class UserController {
-
     private final DoctorService doctorService;
-
-    @Autowired
-    public UserController(DoctorService doctorService) {
-        this.doctorService = doctorService;
-    }
 
     @GetMapping("/{id}")
     public DoctorResponse showDoctor(@PathVariable Long id) {
@@ -22,6 +18,7 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public void deleteUser(@PathVariable Long id) {
         doctorService.deleteDoctor(id);
     }

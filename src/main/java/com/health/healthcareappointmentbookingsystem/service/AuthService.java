@@ -3,14 +3,9 @@ package com.health.healthcareappointmentbookingsystem.service;
 import com.health.healthcareappointmentbookingsystem.dto.dtoRequest.LoginRequest;
 import com.health.healthcareappointmentbookingsystem.dto.dtoRequest.RegisterRequest;
 import com.health.healthcareappointmentbookingsystem.dto.dtoResponse.AuthResponse;
-import com.health.healthcareappointmentbookingsystem.entity.Doctor;
-import com.health.healthcareappointmentbookingsystem.entity.Patient;
-import com.health.healthcareappointmentbookingsystem.entity.Role;
-import com.health.healthcareappointmentbookingsystem.entity.User;
+import com.health.healthcareappointmentbookingsystem.entity.*;
 import com.health.healthcareappointmentbookingsystem.mapper.UserMapper;
-import com.health.healthcareappointmentbookingsystem.repository.DoctorRepository;
-import com.health.healthcareappointmentbookingsystem.repository.PatientRepository;
-import com.health.healthcareappointmentbookingsystem.repository.UserRepository;
+import com.health.healthcareappointmentbookingsystem.repository.*;
 import com.health.healthcareappointmentbookingsystem.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -22,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
-
     private final UserRepository userRepository;
     private final PatientRepository patientRepository;
     private final DoctorRepository doctorRepository;
@@ -32,52 +26,40 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-
+        if (request.getRole() == Role.ADMIN) throw new IllegalStateException("Admin accounts cannot be self-registered");
+        if (request.getRole() == Role.PATIENT) {
+            if (request.getDateOfBirth() == null || request.getGender() == null ||
+                request.getGender().isBlank() || request.getNationalId() == null ||
+                request.getNationalId().isBlank()) {
+                throw new IllegalArgumentException("Patient birth date, gender and national ID are required");
+            }
+        } else if (request.getRole() == Role.DOCTOR) {
+            if (request.getPhoneNumber() == null || request.getPhoneNumber().isBlank() ||
+                request.getSpecialization() == null || request.getLicenseNumber() == null ||
+                request.getLicenseNumber().isBlank() || request.getHospitalOrClinic() == null ||
+                request.getHospitalOrClinic().isBlank() || request.getYearsOfExperience() == null ||
+                request.getYearsOfExperience() < 0) {
+                throw new IllegalArgumentException("Doctor phone, specialization, license, hospital and experience are required");
+            }
+        } else throw new IllegalArgumentException("Invalid role");
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalStateException("Email already registered: " + request.getEmail());
         }
-
-        if (request.getRole() == Role.ADMIN) {
-            throw new IllegalStateException("Admin accounts cannot be self-registered");
-        }
-
-        User user = User.builder()
-                .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .role(request.getRole())
-                .enabled(true)
-                .build();
+        User user = User.builder().email(request.getEmail()).password(passwordEncoder.encode(request.getPassword()))
+                .role(request.getRole()).enabled(true).build();
         user = userRepository.save(user);
-
-        if (request.getRole() == Role.PATIENT) {
-            Patient patient = UserMapper.toPatientEntity(request, user);
-            patientRepository.save(patient);
-        } else if (request.getRole() == Role.DOCTOR) {
-            Doctor doctor = UserMapper.toDoctorEntity(request, user);
-            doctorRepository.save(doctor);
-        }
-
-        String token = jwtService.generateToken(user);
-        return AuthResponse.builder()
-                .token(token)
-                .email(user.getEmail())
-                .role(user.getRole())
-                .build();
+        if (request.getRole() == Role.PATIENT) patientRepository.save(UserMapper.toPatientEntity(request, user));
+        else doctorRepository.save(UserMapper.toDoctorEntity(request, user));
+        return AuthResponse.builder().token(jwtService.generateToken(user))
+                .email(user.getEmail()).role(user.getRole()).build();
     }
 
     public AuthResponse login(LoginRequest request) {
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
-
+                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword()));
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new IllegalStateException("User not found after authentication"));
-
-        String token = jwtService.generateToken(user);
-        return AuthResponse.builder()
-                .token(token)
-                .email(user.getEmail())
-                .role(user.getRole())
-                .build();
+        return AuthResponse.builder().token(jwtService.generateToken(user))
+                .email(user.getEmail()).role(user.getRole()).build();
     }
 }

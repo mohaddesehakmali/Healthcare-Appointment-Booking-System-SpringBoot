@@ -1,12 +1,12 @@
 package com.health.healthcareappointmentbookingsystem.mapper;
 
-
 import com.health.healthcareappointmentbookingsystem.dto.dtoRequest.RegisterRequest;
 import com.health.healthcareappointmentbookingsystem.entity.Doctor;
 import com.health.healthcareappointmentbookingsystem.entity.Patient;
 import com.health.healthcareappointmentbookingsystem.entity.User;
 
-public class UserMapper {
+public final class UserMapper {
+    private UserMapper() { }
 
     public static Patient toPatientEntity(RegisterRequest request, User user) {
         Patient patient = new Patient();
@@ -15,6 +15,8 @@ public class UserMapper {
         patient.setEmail(request.getEmail());
         patient.setPhoneNumber(request.getPhoneNumber());
         patient.setDateOfBirth(request.getDateOfBirth());
+        patient.setGender(request.getGender());
+        patient.setNationalId(request.getNationalId());
         return patient;
     }
 
@@ -23,8 +25,10 @@ public class UserMapper {
         doctor.setUser(user);
         doctor.setFullName(request.getFullName());
         doctor.setEmail(request.getEmail());
+        doctor.setPhone(request.getPhoneNumber());
         doctor.setSpecialization(request.getSpecialization());
         doctor.setLicenseNumber(request.getLicenseNumber());
+        doctor.setYearsOfExperience(request.getYearsOfExperience().toString());
         doctor.setHospital(request.getHospitalOrClinic());
         return doctor;
     }
