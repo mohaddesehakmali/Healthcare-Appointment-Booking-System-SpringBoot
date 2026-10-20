@@ -15,4 +15,4 @@ jobs:
           java-version: '17'
           cache: maven
       - name: Run unit and integration tests
-        run: ./mvnw -B verify
+        run: bash ./mvnw -B verify
